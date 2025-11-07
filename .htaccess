@@ -1,0 +1,51 @@
+RewriteEngine On
+Options -MultiViews
+# Set the base directory for rewriting
+RewriteBase /time_Tracking/
+
+
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Hide .php extension - Internal rewrite (no browser redirect)
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^(.+?)/?$ $1.php [L]
+RewriteRule ^(.*)$ $1.php [L]
+
+
+# Custom URL mappings - Change URL names
+RewriteRule ^Applications?$ applications.php [L]
+RewriteRule ^History?$ history.php [L]
+RewriteRule ^Schedule?$ schedule.php [L]
+RewriteRule ^Home?$ index.php [L]
+RewriteRule ^Profile?$ profile.php [L]
+RewriteRule ^users?$ admin/user.php [NC,L]
+RewriteRule ^Create?$ create.php [L]
+RewriteRule ^report?$ admin/report.php [NC,L]
+RewriteRule ^adminentry?$ admin/adminentry.php [L]
+RewriteRule ^Employees_History?$ admin/employees_history.php [NC,L]
+RewriteRule ^Settings?$ admin/settings.php [L]
+RewriteRule ^login?$ login.php [L]
+RewriteRule ^checkin?$ checkin.php [L]
+RewriteRule ^forgot_pass?$ forgot_pass.php [L]
+RewriteRule ^reset_password?$ reset_password.php [L]
+
+
+
+
+
+
+# Security - Prevent access to .htaccess file
+<Files .htaccess>
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Security - Prevent directory listing
+Options -Indexes
+
+# Set default character set
+AddDefaultCharset UTF-8
+
