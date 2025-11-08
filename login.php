@@ -20,7 +20,7 @@ if (!isset($_SESSION['redirected'])) {
 // Define allowed coordinates (latitude, longitude)
 $allowedLocations = [   
     // ['lat' =>23.031006, 'lng' => 72.570951],    // Example: New York City
-    ['lat' =>23.060516175985743, 'lng' => 72.63348611784362],  // for localhost
+    ['lat' =>23.052288, 'lng' => 72.58112],  // for localhost
     // Add more locations as needed
 ];
 
@@ -33,6 +33,92 @@ $geolocationVerified = isset($_SESSION['geolocation_verified']) && $_SESSION['ge
 
 // Initialize error variable
 $errorCode = 0;
+
+// Function to get location by IP (Fallback method)
+function getLocationByIP($ip = null) {
+    if (!$ip) {
+        $ip = $_SERVER['REMOTE_ADDR'];
+        
+        // Handle localhost/private IPs
+        if ($ip == '::1' || $ip == '127.0.0.1' || substr($ip, 0, 3) == '10.' || 
+            substr($ip, 0, 8) == '192.168.' || substr($ip, 0, 7) == '172.16.') {
+            // For local development, return a default location
+            return [
+                'lat' => 23.0260736,
+                'lng' => 72.5352448,
+                'method' => 'ip',
+                'city' => 'Local Development'
+            ];
+        }
+    }
+    
+    // Use IP-based geolocation service
+    $url = "http://ip-api.com/json/{$ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,query";
+    
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => 5,
+            'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        ]
+    ]);
+    
+    try {
+        $response = @file_get_contents($url, false, $context);
+        if ($response) {
+            $data = json_decode($response, true);
+            
+            if ($data && $data['status'] == 'success') {
+                return [
+                    'lat' => $data['lat'],
+                    'lng' => $data['lon'],
+                    'method' => 'ip',
+                    'city' => $data['city'] ?? 'Unknown',
+                    'region' => $data['regionName'] ?? 'Unknown',
+                    'country' => $data['country'] ?? 'Unknown'
+                ];
+            }
+        }
+    } catch (Exception $e) {
+        // Log error if needed
+        error_log("IP geolocation failed: " . $e->getMessage());
+    }
+    
+    return null;
+}
+
+// Function to check if within allowed area with different tolerances
+function isWithinAllowedArea($userLat, $userLng, $method = 'gps') {
+    global $allowedLocations, $allowedRadius;
+    
+    // If using IP method, allow slightly larger radius (for office WiFi variations)
+    $radius = $method === 'ip' ? $allowedRadius * 1.5 : $allowedRadius;
+    
+    foreach ($allowedLocations as $location) {
+        $distance = calculateDistance($userLat, $userLng, $location['lat'], $location['lng']);
+        if ($distance <= $radius) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Function to calculate distance between two coordinates (Haversine formula)
+function calculateDistance($lat1, $lon1, $lat2, $lon2) {
+    $earthRadius = 6371000; // meters
+    
+    $latFrom = deg2rad($lat1);
+    $lonFrom = deg2rad($lon1);
+    $latTo = deg2rad($lat2);
+    $lonTo = deg2rad($lon2);
+    
+    $latDelta = $latTo - $latFrom;
+    $lonDelta = $lonTo - $lonFrom;
+    
+    $angle = 2 * asin(sqrt(pow(sin($latDelta / 2), 2) +
+        cos($latFrom) * cos($latTo) * pow(sin($lonDelta / 2), 2)));
+    
+    return $angle * $earthRadius;
+}
 
 // Handle form submission
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
@@ -60,31 +146,47 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $isWFHUser = false;
         }
 
-        // Check if geolocation data was submitted (only required for non-WFH users)
+        // Enhanced location verification for non-WFH users
         if (!$isWFHUser) {
+            $locationMethod = 'unknown';
+            $userLat = 0;
+            $userLng = 0;
+            
+            // Try GPS coordinates first (most accurate)
             if (isset($_POST['latitude']) && $_POST['latitude'] != 0 && isset($_POST['longitude']) && $_POST['longitude'] != 0) {
                 $userLat = floatval($_POST['latitude']);
                 $userLng = floatval($_POST['longitude']);
-                
-                // Check if user is within allowed radius
-                $isWithinRange = false;
-                foreach ($allowedLocations as $location) {
-                    $distance = calculateDistance($userLat, $userLng, $location['lat'], $location['lng']);
-                    if ($distance <= $allowedRadius) {
-                        $isWithinRange = true;
-                        break;
-                    }
+                $locationMethod = 'gps';
+            } 
+            // Fallback to IP-based geolocation
+            elseif (isset($_POST['fallback_location']) && $_POST['fallback_location'] == 'ip') {
+                $ipLocation = getLocationByIP();
+                if ($ipLocation) {
+                    $userLat = $ipLocation['lat'];
+                    $userLng = $ipLocation['lng'];
+                    $locationMethod = 'ip';
+                    $_SESSION['location_info'] = $ipLocation; // Store for debugging
                 }
-                
-                if ($isWithinRange) {
+            }
+            
+            // Verify location if we have coordinates
+            if ($userLat != 0 && $userLng != 0) {
+                if (isWithinAllowedArea($userLat, $userLng, $locationMethod)) {
                     $_SESSION['geolocation_verified'] = true;
+                    $_SESSION['location_method'] = $locationMethod;
                     $geolocationVerified = true;
                 } else {
                     $errorCode = 1; // Location not allowed
                     $geolocationVerified = false;
+                    $_SESSION['location_debug'] = [
+                        'method' => $locationMethod,
+                        'user_lat' => $userLat,
+                        'user_lng' => $userLng,
+                        'allowed_locations' => $allowedLocations
+                    ];
                 }
             } else {
-                $errorCode = 3; // Location not provided (for non-WFH users)
+                $errorCode = 3; // Location not provided
                 $geolocationVerified = false;
             }
         } else {
@@ -98,7 +200,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $errorCode = 4; // Inactive user
             } else {
                 $_SESSION['id'] = $user['emp_id'];
-                $_SESSION['at_office'] = true; // False for WFH users
+                $_SESSION['at_office'] = true;
                 
                 if($user['role'] == "admin"){
                     $_SESSION['redirected'] = false;
@@ -114,24 +216,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     } else {
         $errorCode = 2; // Invalid credentials
     }
-}
-
-// Function to calculate distance between two coordinates (Haversine formula)
-function calculateDistance($lat1, $lon1, $lat2, $lon2) {
-    $earthRadius = 6371000; // meters
-    
-    $latFrom = deg2rad($lat1);
-    $lonFrom = deg2rad($lon1);
-    $latTo = deg2rad($lat2);
-    $lonTo = deg2rad($lon2);
-    
-    $latDelta = $latTo - $latFrom;
-    $lonDelta = $lonTo - $lonFrom;
-    
-    $angle = 2 * asin(sqrt(pow(sin($latDelta / 2), 2) +
-        cos($latFrom) * cos($latTo) * pow(sin($lonDelta / 2), 2)));
-    
-    return $angle * $earthRadius;
 }
 ?>
 
@@ -431,6 +515,25 @@ function calculateDistance($lat1, $lon1, $lat2, $lon2) {
             margin-top: 10px;
         }
         
+        .fallback-option {
+            margin-top: 10px;
+            padding: 10px;
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .fallback-btn {
+            background: #f39c12;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 5px;
+        }
+        
         @media (max-width: 480px) {
             .login-container {
                 padding: 15px;
@@ -449,6 +552,11 @@ function calculateDistance($lat1, $lon1, $lat2, $lon2) {
                 align-items: flex-start;
                 gap: 10px;
             }
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
@@ -484,12 +592,18 @@ function calculateDistance($lat1, $lon1, $lat2, $lon2) {
                 <h3>Location Access Required</h3>
                 <p>We need to verify your location before you can login.</p>
                 <button id="get-location" class="location-btn">Allow Location Access</button>
+                
+                <!-- <div id="fallback-option" class="fallback-option" style="display: none; margin-top: 15px;">
+                    <p><strong>GPS not working?</strong> Try IP-based location detection:</p>
+                    <button id="use-ip-location" class="fallback-btn">Use IP Location</button>
+                </div> -->
             </div>
             <?php endif; ?>
             
             <form id="login-form" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>" method="POST">
                 <input type="hidden" id="latitude" name="latitude" value="0">
                 <input type="hidden" id="longitude" name="longitude" value="0">
+                <input type="hidden" id="fallback_location" name="fallback_location" value="">
                 
                 <div class="input-group">
                     <label for="username">Username</label>
@@ -539,9 +653,16 @@ function calculateDistance($lat1, $lon1, $lat2, $lon2) {
                     showCredentialsError("Your account is inactive. Please contact administrator.");
                     break;
             }
+            
+            // Show fallback option after a delay if no errors
+            if (errorCode === 0) {
+                setTimeout(() => {
+                    document.getElementById('fallback-option').style.display = 'block';
+                }, 5000);
+            }
         });
         
-        // prevent all kind of functions by user.
+        // Prevent all kind of functions by user.
         document.addEventListener('contextmenu', e => e.preventDefault());
         document.onkeydown = function (e) {
             // F12
@@ -567,11 +688,12 @@ function calculateDistance($lat1, $lon1, $lat2, $lon2) {
         // Check if geolocation is supported
         if (!navigator.geolocation) {
             showLocationError("Geolocation is not supported by your browser");
+            document.getElementById('fallback-option').style.display = 'block';
         }
         
         // Initial geolocation check
         document.addEventListener('DOMContentLoaded', function() {
-            if (errorCode === 0) {
+            if (errorCode === 0 && !<?php echo isset($_SESSION['WFHsuccess']) && $_SESSION['WFHsuccess'] ? 'true' : 'false'; ?>) {
                 initialGeolocationCheck();
             }
         });
@@ -580,48 +702,33 @@ function calculateDistance($lat1, $lon1, $lat2, $lon2) {
             // Only show location request if no errors and not WFH user
             if (errorCode === 0 && !<?php echo isset($_SESSION['WFHsuccess']) && $_SESSION['WFHsuccess'] ? 'true' : 'false'; ?>) {
                 Swal.fire({
-                    title: "Please Provide Location Access",
-                    text: "Location access is required to login.",
+                    title: "Location Access Required",
+                    text: "We need to verify your location for attendance tracking. This works best on mobile devices. Desktop users may need to use IP-based detection.",
                     icon: "info",
-                    confirmButtonText: "OK"
-                }).then((res) => {
-                    if (res.isConfirmed) {
-                        requestLocation();
-                    }
+                    confirmButtonText: "OK",
+                    showCancelButton: true,
+                    cancelButtonText: "cancel",
+                    showDenyButton: true,
+                    denyButtonText: "Try GPS First"
+                }).then((result) => {
+                    if (result.isConfirmed || result.isDenied) {
+                        requestLocationWithRetry();
+                    } 
+                    // else if (result.dismiss === Swal.DismissReason.cancel) {
+                    //     useIPLocation();
+                    // }
                 });
             }
         }
 
-        // Add event listener to username field
-        document.getElementById('username').addEventListener('blur', function() {
-            const username = this.value;
-            if (username.length > 0 && !<?php echo isset($_SESSION['WFHsuccess']) && $_SESSION['WFHsuccess'] ? 'true' : 'false'; ?>) {
-                document.getElementById('location-message').style.display = 'block';
-            }
-        });
-
-        // Show location permission request
-        document.getElementById('get-location').addEventListener('click', requestLocation);
-        
-        // Form submission validation
-        document.getElementById('login-form').addEventListener('submit', function(e) {
-            const lat = document.getElementById('latitude').value;
-            const lng = document.getElementById('longitude').value;
-            
-            // If location hasn't been verified yet and not WFH user, prevent form submission
-            if ((!lat || !lng || lat == 0 || lng == 0) && !<?php echo isset($_SESSION['WFHsuccess']) && $_SESSION['WFHsuccess'] ? 'true' : 'false'; ?>) {
-                e.preventDefault();
-                showLocationError("Please allow location access before submitting the form.");
-                document.getElementById('location-message').style.display = 'block';
-            }
-        });
-        
-        function requestLocation() {
+        // Enhanced location detection with retry logic
+        function requestLocationWithRetry(retries = 3) {
             document.getElementById('get-location').textContent = 'Detecting location...';
             document.getElementById('get-location').disabled = true;
+            document.getElementById('location-message').style.display = 'block';
 
             Swal.fire({
-                title: 'Processing...',
+                title: 'Detecting Location...',
                 html: `
                   <div style="display: flex; flex-direction: column; align-items: center;">
                     <div class="spinner" style="
@@ -633,7 +740,10 @@ function calculateDistance($lat1, $lon1, $lat2, $lon2) {
                       animation: spin 1s linear infinite;
                       margin-bottom: 10px;
                     "></div>
-                    <div style="font-size: 16px;">Please wait while we detect your location.</div>
+                    <div style="font-size: 16px; text-align: center;">
+                        <p>Attempting GPS location detection...</p>
+                        <p><small>This works best on mobile devices</small></p>
+                    </div>
                   </div>
                 `,
                 allowOutsideClick: false,
@@ -642,73 +752,161 @@ function calculateDistance($lat1, $lon1, $lat2, $lon2) {
                 backdrop: true,
                 showConfirmButton: false,
                 didOpen: () => {
-                  Swal.showLoading();
+                    Swal.showLoading();
                 }
             });
-            
-            navigator.geolocation.getCurrentPosition(
-                function(position) {
-                    // Success: got location
-                    const lat = position.coords.latitude;
-                    const lng = position.coords.longitude; 
+
+            const attempt = (attemptCount) => {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        // Success: got location
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude; 
 
 
-                    ///////////////////////////////////////////////
+                        ///////////////////////////////////////////////
 
 
                     // alert("lat: "+lat+" lng: "+lng);
 
 
                     ///////////////////////////////////////////////
-                    
-                    // Store coordinates in hidden form fields
-                    document.getElementById('latitude').value = lat;
-                    document.getElementById('longitude').value = lng;
-                    
-                    // Hide location message
-                    document.getElementById('location-message').style.display = 'none';
-                    
-                    // Close loading SweetAlert
-                    Swal.close();
-                    
-                    // Show success message
-                    showLocationSuccess("Location verified! You can now login.");
-                    
-                    // Re-enable location button
-                    document.getElementById('get-location').textContent = 'Allow Location Access';
-                    document.getElementById('get-location').disabled = false;
-                },
-                function(error) {
-                    // Error: failed to get location
-                    document.getElementById('get-location').textContent = 'Allow Location Access';
-                    document.getElementById('get-location').disabled = false;
-                    
-                    let errorMessage;
-                    switch(error.code) {
-                        case error.PERMISSION_DENIED:
-                            errorMessage = "Location access denied. Please enable location services to login.";
-                            break;
-                        case error.POSITION_UNAVAILABLE:
-                            errorMessage = "Location information is unavailable.";
-                            break;
-                        case error.TIMEOUT:
-                            errorMessage = "Location request timed out.";
-                            break;
-                        default:
-                            errorMessage = "An unknown error occurred.";
-                            break;
+                        
+                        // Store coordinates in hidden form fields
+                        document.getElementById('latitude').value = lat;
+                        document.getElementById('longitude').value = lng;
+                        document.getElementById('fallback_location').value = '';
+                        
+                        // Hide location message
+                        document.getElementById('location-message').style.display = 'none';
+                        
+                        Swal.close();
+                        showLocationSuccess("GPS location verified! You can now login.");
+                        
+                        // Re-enable location button
+                        document.getElementById('get-location').textContent = 'Allow Location Access';
+                        document.getElementById('get-location').disabled = false;
+                    },
+                    (error) => {
+                        if (attemptCount < retries) {
+                            // Retry after delay
+                            setTimeout(() => {
+                                Swal.getHtmlContainer().querySelector('div').innerHTML = `
+                                    <div style="display: flex; flex-direction: column; align-items: center;">
+                                        <div class="spinner" style="
+                                            width: 40px;
+                                            height: 40px;
+                                            border: 4px solid #ccc;
+                                            border-top: 4px solid #3085d6;
+                                            border-radius: 50%;
+                                            animation: spin 1s linear infinite;
+                                            margin-bottom: 10px;
+                                        "></div>
+                                        <div style="font-size: 16px; text-align: center;">
+                                            <p>Attempt ${attemptCount + 1} of ${retries}...</p>
+                                            <p><small>Retrying location detection</small></p>
+                                        </div>
+                                    </div>
+                                `;
+                                attempt(attemptCount + 1);
+                            }, 2000);
+                        } else {
+                            // All retries failed
+                            Swal.close();
+                            document.getElementById('get-location').textContent = 'Allow Location Access';
+                            document.getElementById('get-location').disabled = false;
+                            
+                            let errorMessage;
+                            switch(error.code) {
+                                case error.PERMISSION_DENIED:
+                                    errorMessage = "Location access denied. Please enable location services or use IP-based detection.";
+                                    break;
+                                case error.POSITION_UNAVAILABLE:
+                                    errorMessage = "GPS location unavailable. Please try IP-based detection.";
+                                    break;
+                                case error.TIMEOUT:
+                                    errorMessage = "Location request timed out. Please try IP-based detection.";
+                                    break;
+                                default:
+                                    errorMessage = "GPS detection failed. Please try IP-based detection.";
+                                    break;
+                            }
+                            
+                            showLocationError(errorMessage);
+                            document.getElementById('fallback-option').style.display = 'block';
+                        }
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 60000 // Cache for 1 minute
                     }
-                    
-                    Swal.close();
-                    showLocationError(errorMessage);
-                },
-                {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 0
-                }
-            );
+                );
+            };
+
+            attempt(1);
         }
+
+        // IP-based location fallback
+        function useIPLocation() {
+            Swal.fire({
+                title: 'Using IP Location',
+                html: `
+                  <div style="display: flex; flex-direction: column; align-items: center;">
+                    <div class="spinner" style="
+                      width: 40px;
+                      height: 40px;
+                      border: 4px solid #ccc;
+                      border-top: 4px solid #f39c12;
+                      border-radius: 50%;
+                      animation: spin 1s linear infinite;
+                      margin-bottom: 10px;
+                    "></div>
+                    <div style="font-size: 16px; text-align: center;">
+                        <p>Detecting your location via IP address...</p>
+                        <p><small>This method uses your network location</small></p>
+                    </div>
+                  </div>
+                `,
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                allowEnterKey: false,
+                backdrop: true,
+                showConfirmButton: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            // Set fallback flag and submit form
+            document.getElementById('fallback_location').value = 'ip';
+            document.getElementById('latitude').value = 0;
+            document.getElementById('longitude').value = 0;
+            document.getElementById('location-message').style.display = 'none';
+            
+            // Small delay to show the loading message, then submit
+            setTimeout(() => {
+                document.getElementById('login-form').submit();
+            }, 2000);
+        }
+
+        // Add event listeners
+        document.getElementById('get-location').addEventListener('click', requestLocationWithRetry);
+        document.getElementById('use-ip-location').addEventListener('click', useIPLocation);
+
+        // Form submission validation
+        document.getElementById('login-form').addEventListener('submit', function(e) {
+            const lat = document.getElementById('latitude').value;
+            const lng = document.getElementById('longitude').value;
+            const fallback = document.getElementById('fallback_location').value;
+            
+            // If location hasn't been verified yet and not WFH user, prevent form submission
+            if ((!lat || !lng || lat == 0 || lng == 0) && !fallback && !<?php echo isset($_SESSION['WFHsuccess']) && $_SESSION['WFHsuccess'] ? 'true' : 'false'; ?>) {
+                e.preventDefault();
+                showLocationError("Please allow location access or use IP-based detection before submitting.");
+                document.getElementById('location-message').style.display = 'block';
+            }
+        });
         
         function showLocationError(message) {
             Swal.fire({
