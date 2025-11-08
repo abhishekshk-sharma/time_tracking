@@ -224,24 +224,24 @@ if($info == "GetAllDetails"){
         $stmt->execute([$searchdate]);
         $getuserid = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $stmt = $pdo->prepare("SELECT e.*, t.* FROM employees e JOIN time_entries t ON e.emp_id = t.employee_id WHERE DATE(t.entry_time) = ? GROUP BY t.employee_id");
+        $stmt = $pdo->prepare("SELECT e.*, t.* FROM employees e JOIN time_entries t ON e.emp_id = t.employee_id WHERE DATE(t.entry_time) = ?  GROUP BY t.employee_id");
         $stmt->execute([$searchdate]);
         $forcountrow = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $countrow = COUNT($forcountrow);
     }elseif($searchInput !== ""){
 
-        $stmt = $pdo->prepare("SELECT * FROM employees WHERE username LIKE ? LIMIT $limit OFFSET $offset");
+        $stmt = $pdo->prepare("SELECT * FROM employees WHERE username LIKE ? AND e.end_date IS NULL LIMIT $limit OFFSET $offset");
         $stmt->execute(["%$searchInput%"]);
         $getuserid = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        $stmt = $pdo->prepare("SELECT * FROM employees WHERE username LIKE ?");
+
+        $stmt = $pdo->prepare("SELECT * FROM employees WHERE username LIKE ? AND e.end_date IS NULL");
         $stmt->execute(["%$searchInput%"]);
         $forcountrow = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $countrow = COUNT($forcountrow);
     }
     else{
         
-        $stmt = $pdo->query("SELECT * FROM employees ORDER BY emp_id ASC LIMIT $limit OFFSET $offset");
+        $stmt = $pdo->query("SELECT * FROM employees WHERE end_date IS NULL ORDER BY emp_id ASC LIMIT $limit OFFSET $offset");
         $getuserid = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         $stmt = $pdo->query("SELECT * FROM employees");

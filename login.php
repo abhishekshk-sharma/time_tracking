@@ -21,7 +21,7 @@ if (!isset($_SESSION['redirected'])) {
 // Define allowed coordinates (latitude, longitude)
 $allowedLocations = [   
     // ['lat' =>23.031006, 'lng' => 72.570951],    // Example: New York City
-    ['lat' =>23.03095, 'lng' => 72.57118],  // for localhost
+    ['lat' =>23.0260736, 'lng' => 72.5352448],  // for localhost
     // Add more locations as needed
 ];
 

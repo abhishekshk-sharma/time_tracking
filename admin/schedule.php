@@ -7,7 +7,7 @@ if ($userID == null) {
     exit;
 }
 
-$stmt = $pdo->prepare("SELECT * FROM employees WHERE emp_id = ?");
+$stmt = $pdo->prepare("SELECT * FROM employees WHERE emp_id = ? AND end_date IS NULL");
 $stmt->execute([$userID]);
 $details = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_holiday'])) {
     $description = $_POST['description'] ?? '';
     
     // Get all active employees
-    $employeesStmt = $pdo->prepare("SELECT emp_id FROM employees WHERE status = 'active'");
+    $employeesStmt = $pdo->prepare("SELECT emp_id FROM employees WHERE status = 'active' AND end_date IS NULL");
     $employeesStmt->execute();
     $employees = $employeesStmt->fetchAll(PDO::FETCH_COLUMN);
     
@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_holiday'])) {
             // Check if entry already exists for this date and employee
             $checkStmt = $pdo->prepare("
                 SELECT id FROM time_entries 
-                WHERE employee_id = ? AND DATE(entry_time) = ? AND entry_type = 'holiday'
+                WHERE employee_id = ? AND DATE(entry_time) = ? AND entry_type = 'holiday' 
             ");
             $checkStmt->execute([$employeeId, $dateStr]);
             
@@ -83,7 +83,7 @@ $timeEntriesStmt = $pdo->prepare("
     SELECT te.*, e.full_name 
     FROM time_entries te 
     JOIN employees e ON te.employee_id = e.emp_id 
-    WHERE DATE(te.entry_time) BETWEEN ? AND ?
+    WHERE DATE(te.entry_time) BETWEEN ? AND ? AND e.end_date IS NULL
     ORDER BY te.entry_time
 ");
 $timeEntriesStmt->execute([$firstDayOfMonth, $lastDayOfMonth]);
@@ -140,7 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_holiday'])) {
     $holiday_time = $holiday_time->format("Y-m-d");
     
 
-    $stmt = $pdo->query("SELECT * FROM employees");
+    $stmt = $pdo->query("SELECT * FROM employees WHERE end_date IS NULL");
     $fetchempid = $stmt->fetchAll(PDO::FETCH_ASSOC);
     // Delete the holiday from time_entries
     $deleteStmt = $pdo->prepare("
@@ -171,7 +171,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_holiday'])) {
     $time = isset($_POST['update_holiday'])?new DateTime($_POST['update_holiday'], new DateTimeZone("asia/kolkata")):"";
     $time = $time->format("Y-m-d");
     
-    $stmt = $pdo->query("SELECT * FROM employees");
+    $stmt = $pdo->query("SELECT * FROM employees WHERE end_date IS NULL");
     $fetchempid = $stmt->fetchAll(PDO::FETCH_ASSOC);
     // Update the holiday entry
     $updateStmt = $pdo->prepare("
@@ -203,6 +203,7 @@ $holidaysStmt = $pdo->prepare("
     WHERE te.entry_type = 'holiday' 
     AND MONTH(te.entry_time) = MONTH(CURRENT_DATE) 
     AND YEAR(te.entry_time) = YEAR(CURRENT_DATE)
+    AND e.end_date IS NULL
     GROUP BY DATE(te.entry_time), te.notes
     ORDER BY te.entry_time DESC
 ");

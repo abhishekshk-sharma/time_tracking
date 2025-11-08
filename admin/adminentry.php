@@ -10,7 +10,7 @@ if ($userID == null) {
 }
 
 // Check if user has admin privileges (you'll need to adjust this based on your admin check logic)
-$stmt = $pdo->prepare("SELECT * FROM employees WHERE emp_id = ?");
+$stmt = $pdo->prepare("SELECT * FROM employees WHERE emp_id = ? AND end_date IS NULL");
     $stmt->execute([$userID]);
     $details = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -21,7 +21,7 @@ $stmt = $pdo->prepare("SELECT * FROM employees WHERE emp_id = ?");
 
 
 // Get all employees for the dropdown
-$stmt = $pdo->prepare("SELECT emp_id, username FROM employees ORDER BY username");
+$stmt = $pdo->prepare("SELECT emp_id, username FROM employees WHERE end_date IS NULL ORDER BY username");
 $stmt->execute();
 $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
