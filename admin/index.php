@@ -88,7 +88,7 @@
                     <i class="fas fa-tachometer-alt"></i>
                     <span>Admin Dashboard</span>
                 </a>
-                <a href="#" class="nav-item" onclick="window.location.href = 'user.php'">
+                <a href="#" class="nav-item" onclick="window.location.href = 'see_employees.php'">
                     <i class="fas fa-users"></i>
                     <span>Employee</span>
                 </a>

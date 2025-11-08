@@ -61,6 +61,18 @@ function isFutureDay($day, $year, $month) {
     return $checkDate > $currentDate;
 }
 
+// Function to check if employee has resigned and day is after resignation
+function isAfterResignation($day, $year, $month, $resignationDate) {
+    if (!$resignationDate) {
+        return false;
+    }
+    
+    $currentDate = new DateTime("$year-$month-$day", new DateTimeZone("asia/kolkata"));
+    $resignation = new DateTime($resignationDate, new DateTimeZone("asia/kolkata"));
+    
+    return $currentDate > $resignation;
+}
+
 // Get current month and year
 $currentMonth = date('m');
 $currentYear = date('Y');
@@ -76,8 +88,6 @@ $output = fopen("php://output", "w");
 
 fputcsv($output, ["Attendance Report"]);
 fputcsv($output, ["Generated for: " . date('F Y')]);
-
-
 
 // Create header row with dates and summary columns
 $headerRow = ['Employee Name'];
@@ -95,7 +105,6 @@ fputcsv($output, $headerRow);
 // Fetch all employees
 $stmt = $pdo->query("SELECT * FROM employees WHERE role != 'admin' AND username != 'dummy'");
 $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
 
 $settingsStmt = $pdo->query("SELECT * FROM system_settings");
 $settings = $settingsStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -148,8 +157,6 @@ function getWorkedHours($pdo, $empId, $date) {
     return $totalSeconds / 3600; // convert to hours
 }
 
-
-
 // Process each employee
 foreach ($employees as $employee) {
     $row = [$employee['username']];
@@ -167,9 +174,18 @@ foreach ($employees as $employee) {
         'wfh' => 0
     ];
     
+    // Get resignation date if exists
+    $resignationDate = $employee['end_date'] ?? null;
+    
     for ($day = 1; $day <= $daysInMonth; $day++) {
         // Skip future days (including today)
         if ($day > $yesterday) {
+            continue;
+        }
+        
+        // Check if employee has resigned and this day is after resignation
+        if ($resignationDate && isAfterResignation($day, $currentYear, $currentMonth, $resignationDate)) {
+            $row[] = "No longer with organization";
             continue;
         }
         

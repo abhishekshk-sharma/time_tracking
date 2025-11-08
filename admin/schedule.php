@@ -1,3 +1,4 @@
+
 <?php
 require_once "includes/config.php";
 
@@ -29,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_holiday'])) {
     $description = $_POST['description'] ?? '';
     
     // Get all active employees
-    $employeesStmt = $pdo->prepare("SELECT emp_id FROM employees WHERE status = 'active' AND end_date IS NULL");
+    $employeesStmt = $pdo->prepare("SELECT emp_id FROM employees WHERE status = 'active' AND end_date IS NULL AND role != 'admin'");
     $employeesStmt->execute();
     $employees = $employeesStmt->fetchAll(PDO::FETCH_COLUMN);
     
@@ -83,7 +84,7 @@ $timeEntriesStmt = $pdo->prepare("
     SELECT te.*, e.full_name 
     FROM time_entries te 
     JOIN employees e ON te.employee_id = e.emp_id 
-    WHERE DATE(te.entry_time) BETWEEN ? AND ? AND e.end_date IS NULL
+    WHERE DATE(te.entry_time) BETWEEN ? AND ? AND e.role != 'admin'
     ORDER BY te.entry_time
 ");
 $timeEntriesStmt->execute([$firstDayOfMonth, $lastDayOfMonth]);
@@ -130,9 +131,6 @@ $settings = $settingsStmt->fetchAll(PDO::FETCH_KEY_PAIR);
 $workStartTime = $settings['work_start_time'] ?? '09:00:00';
 $workEndTime = $settings['work_end_time'] ?? '18:00:00';
 $lateThreshold = $settings['late_threshold'] ?? 15;
-
-
-
 
 // Handle holiday deletion
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_holiday'])) {
@@ -235,6 +233,11 @@ if (isset($_GET['edit_holiday'])) {
         }
     }
 }
+
+// Get all active employees for the day details modal
+$employeesStmt = $pdo->prepare("SELECT emp_id, full_name FROM employees WHERE status = 'active' AND end_date IS NULL ORDER BY full_name");
+$employeesStmt->execute();
+$allEmployees = $employeesStmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <?php require_once "includes/header.php"; ?>
@@ -642,6 +645,165 @@ if (isset($_GET['edit_holiday'])) {
         border: 1px solid #c3e6cb;
     }
     
+    /* Day Details Modal Styles */
+    .day-details-modal {
+        width: 90%;
+        max-width: 1000px;
+        max-height: 90vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .day-details-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0;
+    }
+    
+    .day-details-header {
+        background: linear-gradient(135deg, var(--secondary), #2980b9);
+        color: white;
+        padding: 20px;
+        border-radius: 10px 10px 0 0;
+    }
+    
+    .day-details-body {
+        padding: 20px;
+    }
+    
+    .employee-search {
+        margin-bottom: 20px;
+    }
+    
+    .search-input {
+        width: 100%;
+        padding: 12px 15px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 16px;
+        margin-bottom: 15px;
+    }
+    
+    .employee-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .stat-card {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        text-align: center;
+        border-left: 4px solid var(--secondary);
+    }
+    
+    .stat-number {
+        font-size: 24px;
+        font-weight: bold;
+        color: var(--dark);
+    }
+    
+    .stat-label {
+        font-size: 14px;
+        color: var(--gray);
+        margin-top: 5px;
+    }
+    
+    .employees-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+    }
+    
+    .employees-table th,
+    .employees-table td {
+        padding: 12px 15px;
+        text-align: left;
+        border-bottom: 1px solid #eee;
+    }
+    
+    .employees-table th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+        color: var(--dark);
+        position: sticky;
+        top: 0;
+    }
+    
+    .employees-table tr:hover {
+        background-color: #f9f9f9;
+    }
+    
+    .status-badge {
+        padding: 5px 10px;
+        border-radius: 15px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    
+    .status-present {
+        background: #e7f6e9;
+        color: var(--present);
+    }
+    
+    .status-absent {
+        background: #fbebec;
+        color: var(--absent);
+    }
+    
+    .status-halfday {
+        background: #fff4e6;
+        color: var(--halfday);
+    }
+    
+    .status-holiday {
+        background: #f3e8fd;
+        color: var(--holiday);
+    }
+    
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin-top: 20px;
+    }
+    
+    .pagination-btn {
+        padding: 8px 15px;
+        border: 1px solid #ddd;
+        background: white;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .pagination-btn:hover:not(:disabled) {
+        background: var(--secondary);
+        color: white;
+        border-color: var(--secondary);
+    }
+    
+    .pagination-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    
+    .pagination-info {
+        font-size: 14px;
+        color: var(--gray);
+    }
+    
+    .no-results {
+        text-align: center;
+        padding: 40px;
+        color: var(--gray);
+        font-style: italic;
+    }
+    
     @media (max-width: 1378px) {
         .main-content {
             /*grid-template-columns: 1fr;*/
@@ -722,6 +884,15 @@ if (isset($_GET['edit_holiday'])) {
         
         header{
             width: 100vw;
+        }
+        
+        .employee-stats {
+            grid-template-columns: 1fr;
+        }
+        
+        .employees-table {
+            display: block;
+            overflow-x: auto;
         }
     }
 
@@ -848,9 +1019,6 @@ if (isset($_GET['edit_holiday'])) {
         }
     }
 </style>
-
-
-
 
 <div class="container">
     <div class="main-content">
@@ -984,7 +1152,7 @@ if (isset($_GET['edit_holiday'])) {
                     $isWeekend = $isSunday || $isSecondSaturday || $isFourthSaturday;
                     $isToday = ($day == $today && $currentMonth == date('n') && $currentYear == date('Y'));
                     
-                    echo '<div class="calendar-day ' . ($isWeekend ? 'weekend' : '') . ($isToday ? ' today' : '') . '">';
+                    echo '<div class="calendar-day ' . ($isWeekend ? 'weekend' : '') . ($isToday ? ' today' : '') . '" data-date="' . $date . '">';
                     echo '<div class="day-number">' . $day . '</div>';
                     
                     // Check if we have data for this date
@@ -1121,6 +1289,35 @@ if (isset($_GET['edit_holiday'])) {
     <?php endif; ?>
 </div>
 
+<!-- Day Details Modal -->
+<div class="modal" id="dayDetailsModal">
+    <div class="modal-content day-details-modal">
+        <div class="day-details-header">
+            <h3 id="dayDetailsTitle">Employee Details</h3>
+            <button class="close-btn" id="closeDayDetails">&times;</button>
+        </div>
+        <div class="day-details-content">
+            <div class="day-details-body">
+                <div class="employee-search">
+                    <input type="text" id="employeeSearch" class="search-input" placeholder="Search employees by name...">
+                </div>
+                
+                <div class="employee-stats" id="employeeStats">
+                    <!-- Stats will be loaded here -->
+                </div>
+                
+                <div id="employeesList">
+                    <!-- Employees will be loaded here -->
+                </div>
+                
+                <div class="pagination" id="pagination">
+                    <!-- Pagination will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Edit Holiday Modal -->
 <div class="modal" id="editHolidayModal" style="<?php echo $edit_holiday ? 'display: flex;' : ''; ?>">
     <div class="modal-content">
@@ -1252,278 +1449,413 @@ if (isset($_GET['edit_holiday'])) {
 <?php require_once "includes/footer.php"; ?>
 
 <script>
-
-    // document.addEventListener('DOMContentLoaded', function() {
-    //     // Close edit modal when clicking outside
-    //     const editModal = document.getElementById('editHolidayModal');
-    //     if (editModal) {
-    //         editModal.addEventListener('click', function(e) {
-    //             if (e.target === editModal) {
-    //                 window.location.href = 'schedule.php?month=<?php echo $currentMonth; ?>&year=<?php echo $currentYear; ?>';
-    //             }
-    //         });
-    //     }
-
-    //     // Close modal with Escape key
-    //     document.addEventListener('keydown', function(e) {
-    //         if (e.key === 'Escape' && editModal && editModal.style.display === 'flex') {
-    //             window.location.href = 'schedule.php?month=<?php echo $currentMonth; ?>&year=<?php echo $currentYear; ?>';
-    //         }
-    //     });
-    // });
-
-
-
-
     document.addEventListener('DOMContentLoaded', function() {
-    // For notification Section
+        // Day Details Modal functionality
+        const dayDetailsModal = document.getElementById('dayDetailsModal');
+        const closeDayDetailsBtn = document.getElementById('closeDayDetails');
+        let currentPage = 1;
+        let currentSearch = '';
+        let currentDate = '';
 
+        // Add click event to calendar days
+        document.querySelectorAll('.calendar-day:not(.non-working-day)').forEach(day => {
+            day.addEventListener('click', function() {
+                const date = this.getAttribute('data-date');
+                currentDate = date;
+                showDayDetails(date);
+            });
+        });
 
-    $("#notificationBell").click(function(){
-        notification();
-        $(".notification-modal").show();
+        // Close day details modal
+        closeDayDetailsBtn.addEventListener('click', function() {
+            dayDetailsModal.style.display = 'none';
+        });
 
-    });
-    $("#notificationClose").click(function(){
-        
-        $(".notification-modal").hide();
+        window.addEventListener('click', function(e) {
+            if (e.target === dayDetailsModal) {
+                dayDetailsModal.style.display = 'none';
+            }
+        });
 
-    });
-    $("#closeDetailBtn").click(function(){
-        
-        $("#detailModal").hide();
+        // Search functionality
+        document.getElementById('employeeSearch').addEventListener('input', function(e) {
+            currentSearch = e.target.value;
+            currentPage = 1;
+            loadEmployees(currentDate, currentPage, currentSearch);
+        });
 
-    });
-    $("#detailClose").click(function(){
-        
-        $("#detailModal").hide();
+        function showDayDetails(date) {
+            const formattedDate = new Date(date).toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            
+            document.getElementById('dayDetailsTitle').textContent = `Employee Details - ${formattedDate}`;
+            dayDetailsModal.style.display = 'flex';
+            currentPage = 1;
+            currentSearch = '';
+            document.getElementById('employeeSearch').value = '';
+            loadEmployees(date, currentPage, currentSearch);
+        }
 
-    });
-    $("#markAsReadBtn").click(function(){
-        
-        let appid = $("#markAsReadBtn").val();
+        function loadEmployees(date, page = 1, search = '') {
+            const itemsPerPage = 10;
+            
+            fetch(`time_management/get_day_employees.php?date=${date}&page=${page}&search=${encodeURIComponent(search)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayEmployeeStats(data.stats);
+                        displayEmployees(data.employees);
+                        displayPagination(data.totalPages, page, data.totalEmployees);
+                    } else {
+                        document.getElementById('employeesList').innerHTML = 
+                            '<div class="no-results">Error loading employee data</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('employeesList').innerHTML = 
+                        '<div class="no-results">Error loading employee data</div>';
+                });
+        }
 
-        click = "markAsReadBtn";
-        
-        $.ajax({
-            url: "leave_management/notification.php",
-            method: "POST",
-            dataType: "json",
-            data: {click:click, appid:appid},
-            success: function(e){
-                if(e){
-                    
-                    if(e.success == "success"){
-                        $("#detailModal").hide();
-                        $("#notificationBadge").html(e.count);
-                    
-                        $(".notification-content-head-div").removeClass("notification-item unread");
+        function displayEmployeeStats(stats) {
+            const statsHtml = `
+                <div class="stat-card">
+                    <div class="stat-number">${stats.total}</div>
+                    <div class="stat-label">Total Employees</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.working}</div>
+                    <div class="stat-label">Working</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.holiday}</div>
+                    <div class="stat-label">On Holiday</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.halfday}</div>
+                    <div class="stat-label">Half Day</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.absent}</div>
+                    <div class="stat-label">No Data</div>
+                </div>
+            `;
+            document.getElementById('employeeStats').innerHTML = statsHtml;
+        }
+
+        function displayEmployees(employees) {
+            if (employees.length === 0) {
+                document.getElementById('employeesList').innerHTML = 
+                    '<div class="no-results">No employees found</div>';
+                return;
+            }
+
+            let employeesHtml = `
+                <table class="employees-table">
+                    <thead>
+                        <tr>
+                            <th>Employee Name</th>
+                            <th>Status</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            employees.forEach(employee => {
+                let statusClass = '';
+                let statusText = '';
+                
+                switch(employee.status) {
+                    case 'working':
+                        statusClass = 'status-present';
+                        statusText = 'Working';
+                        break;
+                    case 'holiday':
+                        statusClass = 'status-holiday';
+                        statusText = 'Holiday';
+                        break;
+                    case 'half_day':
+                        statusClass = 'status-halfday';
+                        statusText = 'Half Day';
+                        break;
+                    default:
+                        statusClass = 'status-absent';
+                        statusText = 'No Data';
+                }
+
+                employeesHtml += `
+                    <tr>
+                        <td>${employee.name}</td>
+                        <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                        <td>${employee.details || '-'}</td>
+                    </tr>
+                `;
+            });
+
+            employeesHtml += '</tbody></table>';
+            document.getElementById('employeesList').innerHTML = employeesHtml;
+        }
+
+        function displayPagination(totalPages, currentPage, totalEmployees) {
+            if (totalPages <= 1) {
+                document.getElementById('pagination').innerHTML = `
+                    <div class="pagination-info">
+                        Showing ${totalEmployees} employees
+                    </div>
+                `;
+                return;
+            }
+
+            let paginationHtml = `
+                <button class="pagination-btn" ${currentPage <= 1 ? 'disabled' : ''} 
+                    onclick="changePage(${currentPage - 1})">
+                    <i class="fas fa-chevron-left"></i> Previous
+                </button>
+                <div class="pagination-info">
+                    Page ${currentPage} of ${totalPages} (${totalEmployees} employees)
+                </div>
+                <button class="pagination-btn" ${currentPage >= totalPages ? 'disabled' : ''} 
+                    onclick="changePage(${currentPage + 1})">
+                    Next <i class="fas fa-chevron-right"></i>
+                </button>
+            `;
+
+            document.getElementById('pagination').innerHTML = paginationHtml;
+        }
+
+        // Global function for pagination
+        window.changePage = function(page) {
+            currentPage = page;
+            loadEmployees(currentDate, currentPage, currentSearch);
+        };
+
+        // For notification Section
+        $("#notificationBell").click(function(){
+            notification();
+            $(".notification-modal").show();
+
+        });
+        $("#notificationClose").click(function(){
+            
+            $(".notification-modal").hide();
+
+        });
+        $("#closeDetailBtn").click(function(){
+            
+            $("#detailModal").hide();
+
+        });
+        $("#detailClose").click(function(){
+            
+            $("#detailModal").hide();
+
+        });
+        $("#markAsReadBtn").click(function(){
+            
+            let appid = $("#markAsReadBtn").val();
+            click = "markAsReadBtn";
+            
+            $.ajax({
+                url: "leave_management/notification.php",
+                method: "POST",
+                dataType: "json",
+                data: {click:click, appid:appid},
+                success: function(e){
+                    if(e){
+                        
+                        if(e.success == "success"){
+                            $("#detailModal").hide();
+                            $("#notificationBadge").html(e.count);
+                        
+                            $(".notification-content-head-div").removeClass("notification-item unread");
+                            if(e.count <=0){
+
+                            $(".notybell").css({"color":"white"});
+                        }
+                        else{
+                            
+                            $(".notybell").css({"color":"red"});
+                        }
+                        }
+                      
+                    }
+                },
+                error: function(e, s, x){
+                    console.log(e);
+                    console.log(s);
+                    console.log(x);
+                }
+            });
+
+        });
+
+        $(document).on("click",".notification-content-head-div", function(){
+            click = "changeNoteStatus";
+            let appid = $(this).data("appid");
+            
+            $.ajax({
+                url: "leave_management/notification.php",
+                method: "POST",
+                dataType: "json",
+                data: {click:click, appid:appid},
+                success: function(e){
+                    if(e){
+                        
+                        $("#markAsReadBtn").val(e.appid);
+
+                        $("#detailContent").html(e.output);
+                        $("#detailModal").show();
                         if(e.count <=0){
 
-                        $(".notybell").css({"color":"white"});
-                    }
-                    else{
-                        
-                        $(".notybell").css({"color":"red"});
-                    }
-                    }
-                  
+                            $(".notybell").css({"color":"white"});
+                        }
+                        else{
+                            
+                            $(".notybell").css({"color":"red"});
+                        }
+                    }   
+                },
+                error: function(e, s, x){
+                    console.log(e);
+                    console.log(s);
+                    console.log(x);
                 }
-            },
-            error: function(e, s, x){
-                console.log(e);
-                console.log(s);
-                console.log(x);
-            }
+            });
         });
+        $(document).on("click","#markAllRead", function(){
+            
+            click = "markAllRead";
+           
+            $.ajax({
+                url: "leave_management/notification.php",
+                method: "POST",
+                dataType: "json",
+                data: {click:click},
+                success: function(e){
+                    if(e){
+                        $("#notificationList").html(e.output);
+                        $("#notificationBadge").html(e.count);
+                         
+                        if(e.count <=0){
 
-    });
-
-    $(document).on("click",".notification-content-head-div", function(){
-
-        
-        
-        click = "changeNoteStatus";
-        let appid = $(this).data("appid");
-        
-        $.ajax({
-            url: "leave_management/notification.php",
-            method: "POST",
-            dataType: "json",
-            data: {click:click, appid:appid},
-            success: function(e){
-                if(e){
-                    
-                    $("#markAsReadBtn").val(e.appid);
-
-                    $("#detailContent").html(e.output);
-                    $("#detailModal").show();
-                    if(e.count <=0){
-
-                        $(".notybell").css({"color":"white"});
+                            $(".notybell").css({"color":"white"});
+                        }
+                        else{
+                            
+                            $(".notybell").css({"color":"red"});
+                        }
                     }
-                    else{
-                        
-                        $(".notybell").css({"color":"red"});
-                    }
-                }   
-            },
-            error: function(e, s, x){
-                console.log(e);
-                console.log(s);
-                console.log(x);
-            }
-        });
-    });
-    $(document).on("click","#markAllRead", function(){
-        
-        click = "markAllRead";
-       
-        
-        $.ajax({
-            url: "leave_management/notification.php",
-            method: "POST",
-            dataType: "json",
-            data: {click:click},
-            success: function(e){
-                if(e){
-                    $("#notificationList").html(e.output);
-                    $("#notificationBadge").html(e.count);
-                     
-                    if(e.count <=0){
-
-                        $(".notybell").css({"color":"white"});
-                    }
-                    else{
-                        
-                        $(".notybell").css({"color":"red"});
-                    }
+                },
+                error: function(e, s, x){
+                    console.log(e);
+                    console.log(s);
+                    console.log(x);
                 }
-            },
-            error: function(e, s, x){
-                console.log(e);
-                console.log(s);
-                console.log(x);
-            }
+            });
         });
-    });
-    $(document).on("click",".deletenoty", function(){
-        
-        click = "deletenoty";
-       let appid = $(".deletenoty").data("appid");
-        
-        $.ajax({
-            url: "leave_management/notification.php",
-            method: "POST",
-            dataType: "json",
-            data: {click:click, appid:appid},
-            success: function(e){
-                if(e){
-                    $("#notificationList").html(e.output);
-                    $("#notificationBadge").html(e.count);
-                    
-                    if(e.count <=0){
-
-                        $(".notybell").css({"color":"white"});
-                    }
-                    else{
+        $(document).on("click",".deletenoty", function(){
+            
+            click = "deletenoty";
+           let appid = $(".deletenoty").data("appid");
+            
+            $.ajax({
+                url: "leave_management/notification.php",
+                method: "POST",
+                dataType: "json",
+                data: {click:click, appid:appid},
+                success: function(e){
+                    if(e){
+                        $("#notificationList").html(e.output);
+                        $("#notificationBadge").html(e.count);
                         
-                        $(".notybell").css({"color":"red"});
+                        if(e.count <=0){
+
+                            $(".notybell").css({"color":"white"});
+                        }
+                        else{
+                            
+                            $(".notybell").css({"color":"red"});
+                        }
                     }
+                },
+                error: function(e, s, x){
+                    console.log(e);
+                    console.log(s);
+                    console.log(x);
                 }
-            },
-            error: function(e, s, x){
-                console.log(e);
-                console.log(s);
-                console.log(x);
-            }
+            });
         });
-    });
-    
+        
 
-    setInterval(notification, 10000);
-    let notiCount = 0;
-    // let notiCount2 = 0;
-    // let notiCount = <?php //echo $_SESSION['notification_session_count']; ?>;
-    let notiCount2 = <?php echo $_SESSION['notification_session_count']; ?>;
-    // alert(notiCount21);
+        setInterval(notification, 10000);
+        let notiCount = 0;
+        let notiCount2 = <?php echo $_SESSION['notification_session_count']; ?>;
+        let soundAllowed = false;
 
-    let soundAllowed = false;
+        $(document).one('click', function() {
+          soundAllowed = true;
+          notification();
+        });
+            function triggerNotification() {
+            if (soundAllowed) {
+                notiCount = notiCount2;
+                localStorage.setItem("notiCount", notiCount);
+                const sound = $('#notifSound')[0];
+                sound.pause();
+                sound.currentTime = 0;
+                sound.play();
 
-    $(document).one('click', function() {
-      soundAllowed = true;
-    //   alert(soundAllowed);
-      notification();
-    });
-        function triggerNotification() {
-        // alert("true1");
-        if (soundAllowed) {
-            //   alert("true2");
-            notiCount = notiCount2;
-            localStorage.setItem("notiCount", notiCount);
-            const sound = $('#notifSound')[0];
-            sound.pause();
-            sound.currentTime = 0;
-            sound.play();
+          }
+        }
+        notification();
+        function notification(){
+            click = "notification";
 
-      }
-    }
-    notification();
-    function notification(){
-
-        click = "notification";
-
-        $.ajax({
-            url: "leave_management/notification.php",
-            method: "POST",
-            dataType: "json",
-            data: {click:click},
-            success: function(e){
-
-                // console.log(e);
-                if(e){
-                    $("#notificationList").html(e.output);
-                    $("#notificationBadge").html(e.count);
-                    
-                    notiCount2 = e.count;
-
-                    if(e.count <=0){
-
-                        $(".notybell").css({"color":"white"});
-                    }
-                    else{
+            $.ajax({
+                url: "leave_management/notification.php",
+                method: "POST",
+                dataType: "json",
+                data: {click:click},
+                success: function(e){
+                    if(e){
+                        $("#notificationList").html(e.output);
+                        $("#notificationBadge").html(e.count);
                         
-                        $(".notybell").css({"color":"red"});
-                    }
-                    
-                    if(e.count == 0){
-                        notiCount = 0;
-                    }
+                        notiCount2 = e.count;
 
-                    let storedCount = localStorage.getItem("notiCount") || 0;
+                        if(e.count <=0){
 
-                    
-
-                    if(notiCount !== null && notiCount2 !== parseInt(storedCount)){
+                            $(".notybell").css({"color":"white"});
+                        }
+                        else{
+                            
+                            $(".notybell").css({"color":"red"});
+                        }
                         
-                            triggerNotification();
-                            // notiCount = notiCount2;
-                        
-                    }
+                        if(e.count == 0){
+                            notiCount = 0;
+                        }
 
-                    
+                        let storedCount = localStorage.getItem("notiCount") || 0;
+
+                        if(notiCount !== null && notiCount2 !== parseInt(storedCount)){
+                                triggerNotification();
+                        }
+                    }
+                },
+                error: function(e, s, x){
+                    console.log(e);
+                    console.log(s);
+                    console.log(x);
                 }
-            },
-            error: function(e, s, x){
-                console.log(e);
-                console.log(s);
-                console.log(x);
-            }
-        });
-    }
-
-
-    // Notification section end
+            });
+        }
 
         // Holiday modal functionality
         const holidayModal = document.getElementById('holidayModal');
@@ -1556,18 +1888,6 @@ if (isset($_GET['edit_holiday'])) {
             if (e.target === holidayModal) {
                 closeHolidayModal();
             }
-        });
-        
-        // Add click event to calendar days to show detailed view
-        document.querySelectorAll('.calendar-day').forEach(day => {
-            day.addEventListener('click', function() {
-                const dayNumber = this.querySelector('.day-number').textContent;
-                const date = '<?php echo $currentYear . '-' . sprintf("%02d", $currentMonth) . '-'; ?>' + dayNumber.padStart(2, '0');
-                
-                // In a real implementation, you would show a modal with detailed information
-                // about all employees for the selected date
-               
-            });
         });
     });
 </script>

@@ -53,11 +53,21 @@ function isWeekend($day, $year, $month) {
     return false;
 }
 
+// Function to check if employee has resigned and day is after resignation
+function isAfterResignation($day, $year, $month, $resignationDate) {
+    if (!$resignationDate) {
+        return false;
+    }
+    
+    $currentDate = new DateTime("$year-$month-$day", new DateTimeZone("asia/kolkata"));
+    $resignation = new DateTime($resignationDate, new DateTimeZone("asia/kolkata"));
+    
+    return $currentDate > $resignation;
+}
+
 // Get previous month and year
 $lastMonth = date('m', strtotime('-1 month'));
 $lastYear = date('Y', strtotime('-1 month'));
-
-
 
 $headerDate = sprintf('%02d%02d', $lastMonth,$lastYear);
 
@@ -159,7 +169,16 @@ foreach ($employees as $employee) {
         'wfh' => 0  
     ];
     
+    // Get resignation date if exists
+    $resignationDate = $employee['end_date'] ?? null;
+    
     for ($day = 1; $day <= $daysInMonth; $day++) {
+        // Check if employee has resigned and this day is after resignation
+        if ($resignationDate && isAfterResignation($day, $lastYear, $lastMonth, $resignationDate)) {
+            $row[] = "No longer with organization";
+            continue;
+        }
+        
         // Check if weekend
         if (isWeekend($day, $lastYear, $lastMonth)) {
             $row[] = "Holiday";

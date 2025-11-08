@@ -65,6 +65,18 @@ function isWeekend($date) {
     return false;
 }
 
+// Function to check if employee has resigned and day is after resignation
+function isAfterResignation($date, $resignationDate) {
+    if (!$resignationDate) {
+        return false;
+    }
+    
+    $currentDate = new DateTime($date, new DateTimeZone("asia/kolkata"));
+    $resignation = new DateTime($resignationDate, new DateTimeZone("asia/kolkata"));
+    
+    return $currentDate > $resignation;
+}
+
 // Function to generate all dates between from and to dates
 function getDateRange($from, $to) {
     $dates = [];
@@ -178,8 +190,17 @@ foreach ($employees as $employee) {
         'wfh' => 0
     ];
     
+    // Get resignation date if exists
+    $resignationDate = $employee['end_date'] ?? null;
+    
     foreach ($dateRange as $date) {
         $dateObj = new DateTime($date, new DateTimeZone("asia/kolkata"));
+        
+        // Check if employee has resigned and this day is after resignation
+        if ($resignationDate && isAfterResignation($date, $resignationDate)) {
+            $row[] = "No longer with organization";
+            continue;
+        }
         
         // Check if weekend
         if (isWeekend($dateObj)) {

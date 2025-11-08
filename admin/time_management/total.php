@@ -1369,5 +1369,126 @@ if($info == "check_setting"){
         echo json_encode($response);
 }
 
+
+
+
+// Add this to your existing time_management/total.php file
+if($info == "GetAllEmployees"){
+    
+    $page = isset($_POST['page'])?intval($_POST['page']):null;
+    $limit = isset($_POST['limit'])?intval($_POST['limit']):null;
+    $searchInput = isset($_POST['searchInput'])?($_POST['searchInput']):"";
+    $departmentFilter = isset($_POST['departmentFilter'])?($_POST['departmentFilter']):"";
+    $statusFilter = isset($_POST['statusFilter'])?($_POST['statusFilter']):"";
+    $employeeType = isset($_POST['employeeType'])?($_POST['employeeType']):"current";
+    
+    $offset = ($page - 1) * $limit;
+    
+    // Build the query with filters
+    $sql = "SELECT * FROM employees WHERE 1=1";
+    $params = [];
+    
+    // Add employee type filter
+    if ($employeeType == "current") {
+        $sql .= " AND end_date IS NULL";
+    } else if ($employeeType == "previous") {
+        $sql .= " AND end_date IS NOT NULL";
+    }
+    
+    if (!empty($searchInput)) {
+        $sql .= " AND (username LIKE ? OR emp_id LIKE ?)";
+        $params[] = "%$searchInput%";
+        $params[] = "%$searchInput%";
+    }
+    
+    if (!empty($departmentFilter)) {
+        $sql .= " AND department = ?";
+        $params[] = $departmentFilter;
+    }
+    
+    if (!empty($statusFilter)) {
+        $sql .= " AND status = ?";
+        $params[] = $statusFilter;
+    }
+    
+    // Add ordering and pagination
+    $sql .= " ORDER BY emp_id ASC LIMIT $limit OFFSET $offset";
+    
+    // Execute the query
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Count total rows for pagination
+    $countSql = "SELECT COUNT(*) as total FROM employees WHERE 1=1";
+    $countParams = [];
+    
+    // Add employee type filter
+    if ($employeeType == "current") {
+        $countSql .= " AND end_date IS NULL";
+    } else if ($employeeType == "previous") {
+        $countSql .= " AND end_date IS NOT NULL";
+    }
+    
+    if (!empty($searchInput)) {
+        $countSql .= " AND (username LIKE ? OR emp_id LIKE ?)";
+        $countParams[] = "%$searchInput%";
+        $countParams[] = "%$searchInput%";
+    }
+    
+    if (!empty($departmentFilter)) {
+        $countSql .= " AND department = ?";
+        $countParams[] = $departmentFilter;
+    }
+    
+    if (!empty($statusFilter)) {
+        $countSql .= " AND status = ?";
+        $countParams[] = $statusFilter;
+    }
+    
+    $countStmt = $pdo->prepare($countSql);
+    $countStmt->execute($countParams);
+    $countResult = $countStmt->fetch(PDO::FETCH_ASSOC);
+    $countrow = $countResult['total'];
+    
+    // Generate HTML output
+    $output = '';
+    
+    if (count($employees) > 0) {
+        foreach($employees as $employee) {
+            $statusClass = ($employee['status'] == 'active') ? 'status-active' : 'status-inactive';
+            $employeeTypeClass = ($employee['end_date'] === null) ? 'current-employee' : 'previous-employee';
+            $employeeTypeText = ($employee['end_date'] === null) ? 'Current' : 'Previous';
+            
+            $output .= '<tr class="employee-row">';
+            
+            // Make username clickable only for current employees
+            
+                $output .= '<td><span class="username-link" data-id="'.$employee['emp_id'].'">'.$employee['username'].'</span></td>';
+            
+            
+            $output .= '<td>'.$employee['emp_id'].'</td>';
+            $output .= '<td>'.$employee['department'].'</td>';
+            $output .= '<td>'.$employee['position'].'</td>';
+            $output .= '<td><span class="status-badge '.$statusClass.'">'.$employee['status'].'</span></td>';
+            $output .= '<td>'.$employee['role'].'</td>';
+            $output .= '<td>'.$employee['hire_date'].'</td>';
+            $output .= '<td>'.($employee['end_date'] ? $employee['end_date'] : '-').'</td>';
+            $output .= '<td><span class="employee-type-badge '.$employeeTypeClass.'">'.$employeeTypeText.'</span></td>';
+            $output .= '</tr>';
+        }
+    } else {
+        $employeeTypeText = ($employeeType == "current") ? "current" : "previous";
+        $output = '<tr><td colspan="9" style="text-align:center; color: red;">No '.$employeeTypeText.' employees found</td></tr>';
+    }
+    
+    $response = [
+        "output" => $output,
+        "row" => $countrow
+    ];
+    
+    echo json_encode($response);
+}
+
 ?>
 

@@ -183,7 +183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_entry'])) {
                         <i class="fas fa-tachometer-alt"></i>
                         <span>Admin Dashboard</span>
                     </a>
-                    <a href="user.php" class="nav-item ">
+                    <a href="see_employees.php" class="nav-item ">
                         <i class="fas fa-users"></i>
                         <span>Employee</span>
                     </a>

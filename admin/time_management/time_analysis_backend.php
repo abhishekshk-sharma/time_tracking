@@ -1,3 +1,4 @@
+
 <?php
 require_once "../includes/config.php";
 
@@ -86,19 +87,20 @@ if ($info == "getTimeAnalysis") {
         }
     }
     
-    // Calculate expected work hours
+    // Calculate expected work hours (including lunch)
     $expected_work_seconds = (strtotime($work_end_time_str) - strtotime($work_start_time_str));
     $expected_work_hours = $expected_work_seconds / 3600;
     
     // Calculate offset for pagination
     $offset = ($page - 1) * $limit;
     
-    // Build base SQL query
-    $sql = "SELECT e.emp_id, e.full_name, e.department, e.position 
+    // Build base SQL query - Include employees who were active during the selected period
+    // This means: employees who had no end_date OR their end_date is after the start of the period
+    $sql = "SELECT e.emp_id, e.full_name, e.department, e.position, e.end_date, e.status 
             FROM employees e 
-            WHERE e.status = 'active'";
+            WHERE (e.end_date IS NULL OR e.end_date >= :period_start)";
     
-    $countSql = "SELECT COUNT(*) as total FROM employees e WHERE e.status = 'active'";
+    $countSql = "SELECT COUNT(*) as total FROM employees e WHERE (e.end_date IS NULL OR e.end_date >= :period_start)";
     
     // Add department filter
     if ($department != 'all') {
@@ -117,6 +119,7 @@ if ($info == "getTimeAnalysis") {
     
     // Prepare and execute count query
     $stmt = $pdo->prepare($countSql);
+    $stmt->bindValue(':period_start', $startDate, PDO::PARAM_STR);
     
     if ($department != 'all') {
         $stmt->bindValue(':department', $department, PDO::PARAM_STR);
@@ -133,6 +136,7 @@ if ($info == "getTimeAnalysis") {
     
     // Prepare and execute main query
     $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(':period_start', $startDate, PDO::PARAM_STR);
     
     if ($department != 'all') {
         $stmt->bindValue(':department', $department, PDO::PARAM_STR);
@@ -151,6 +155,9 @@ if ($info == "getTimeAnalysis") {
     // Initialize summary statistics
     $summaryStats = [
         'total_employees' => $totalEmployees,
+        'active_employees' => 0,
+        'resigned_employees' => 0,
+        'inactive_employees' => 0,
         'avg_working_hours' => 0,
         'late_arrivals' => 0,
         'long_lunches' => 0,
@@ -181,6 +188,17 @@ if ($info == "getTimeAnalysis") {
     // Process each employee
     foreach ($employees as $employee) {
         $empId = $employee['emp_id'];
+        $endDateEmp = $employee['end_date'];
+        $empStatus = $employee['status'];
+        
+        // Update employment status counts
+        if ($endDateEmp !== null) {
+            $summaryStats['resigned_employees']++;
+        } elseif ($empStatus === 'inactive') {
+            $summaryStats['inactive_employees']++;
+        } else {
+            $summaryStats['active_employees']++;
+        }
         
         // Calculate holidays for this employee and date range
         $holidays = calculateHolidays($startDate, $endDate, $empId, $pdo);
@@ -217,6 +235,12 @@ if ($info == "getTimeAnalysis") {
         
         foreach ($dateRange as $date) {
             $currentDate = $date->format('Y-m-d');
+            
+            // Skip dates after employee's end_date
+            if ($endDateEmp !== null && $currentDate > $endDateEmp) {
+                continue;
+            }
+            
             $dayEntries = isset($entriesByDate[$currentDate]) ? $entriesByDate[$currentDate] : [];
             
             // Check if this date is a holiday
@@ -256,6 +280,20 @@ if ($info == "getTimeAnalysis") {
             $wfhstmt->execute([$empId, $date->format('Y-m-d')]);
             if($wfhstmt->rowCount() > 0){
                 $dayData['status'] = 'WFH';
+            }
+            
+            // Add employment status info to details if resigned or inactive
+            $employmentInfo = "";
+            if ($endDateEmp !== null) {
+                $employmentInfo = " (Resigned on " . date('M j, Y', strtotime($endDateEmp)) . ")";
+            } elseif ($empStatus === 'inactive') {
+                $employmentInfo = " (Inactive Employee)";
+            }
+            
+            if ($employmentInfo && isset($dayData['details'])) {
+                $dayData['details'] .= $employmentInfo;
+            } elseif ($employmentInfo) {
+                $dayData['details'] = $employmentInfo;
             }
             
             // Add to employee days
@@ -316,13 +354,14 @@ if ($info == "getTimeAnalysis") {
             }
             
             // Add to total worked time (only for non-holiday, worked days)
-            if ($dayData['net_hours_seconds'] > 0 && $dayData['status'] != 'Holiday' && $dayData['status'] != 'WFH') {
-                $totalWorkedSeconds += $dayData['net_hours_seconds'];
+            // Now using total_hours_seconds which includes lunch time
+            if ($dayData['total_hours_seconds'] > 0 && $dayData['status'] != 'Holiday' && $dayData['status'] != 'WFH') {
+                $totalWorkedSeconds += $dayData['total_hours_seconds'];
                 $daysCount++;
             }
         }
         
-        // Calculate average working hours
+        // Calculate average working hours (now including lunch)
         if ($daysCount > 0) {
             $avgSeconds = $totalWorkedSeconds / $daysCount;
             $avgHours = floor($avgSeconds / 3600);
@@ -338,12 +377,14 @@ if ($info == "getTimeAnalysis") {
             'name' => $employee['full_name'],
             'department' => $employee['department'],
             'position' => $employee['position'],
+            'end_date' => $endDateEmp,
+            'employment_status' => $empStatus,
             'avg_work_time' => $avgWorkTime,
             'days' => $employeeDays
         ];
     }
     
-    // Calculate overall average working hours
+    // Calculate overall average working hours (including lunch)
     if (count($employeeData) > 0) {
         $totalAvgSeconds = 0;
         $employeeCount = 0;
@@ -463,7 +504,7 @@ function calculateDayWorkTime($entries, $date, $work_start_time_str, $work_end_t
     $expected_start_time = strtotime($date . ' ' . $work_start_time_str);
     $expected_end_time = strtotime($date . ' ' . $work_end_time_str);
     
-    // Calculate expected work seconds for this day
+    // Calculate expected work seconds for this day (including lunch)
     $expected_work_seconds = $expected_end_time - $expected_start_time;
     $expected_work_hours = $expected_work_seconds / 3600;
     
@@ -584,32 +625,24 @@ function calculateDayWorkTime($entries, $date, $work_start_time_str, $work_end_t
         }
     }
 
-    // Calculate total worked time (only from punch_in to punch_out sessions)
+    // Calculate total worked time (from first punch_in to last punch_out, including lunch)
     $total_worked_seconds = 0;
-    $punch_in_time = null;
-    
-    foreach ($entries as $entry) {
-        if ($entry['entry_type'] == 'punch_in') {
-            $punch_in_time = strtotime($entry['entry_time']);
-        } elseif ($entry['entry_type'] == 'punch_out' && $punch_in_time !== null) {
-            $punch_out_time = strtotime($entry['entry_time']);
-            
-            if ($punch_out_time > $punch_in_time) {
-                $total_worked_seconds += ($punch_out_time - $punch_in_time);
-            }
-            $punch_in_time = null;
+    if (!empty($entries)) {
+        $first_punch_time = strtotime($entries[0]['entry_time']);
+        $last_punch_time = strtotime($entries[count($entries) - 1]['entry_time']);
+        
+        if ($last_punch_time > $first_punch_time) {
+            $total_worked_seconds = $last_punch_time - $first_punch_time;
         }
     }
     
-    // Calculate net work time (subtract lunch time)
-    $net_work_seconds = $total_worked_seconds - $total_lunch_seconds;
-    if ($net_work_seconds < 0) $net_work_seconds = 0;
-    
+    // Calculate net work time (total time including lunch - this is now the main metric)
+    $net_work_seconds = $total_worked_seconds;
     $net_hours = floor($net_work_seconds / 3600);
     $net_minutes = floor(($net_work_seconds % 3600) / 60);
     $net_display = sprintf('%d:%02d', $net_hours, $net_minutes);
     
-    // Check for insufficient hours
+    // Check for insufficient hours (now comparing total time including lunch)
     $insufficient_hours = false;
     if ($net_work_seconds < ($expected_work_seconds * 0.9) && $state == "Present") {
         $insufficient_hours = true;
@@ -634,16 +667,18 @@ function calculateDayWorkTime($entries, $date, $work_start_time_str, $work_end_t
         'punch_in' => $first_punch_display,
         'punch_out' => $last_punch_display,
         'lunch_duration' => $lunch_display,
-        'total_hours' => sprintf('%d:%02d', floor($total_worked_seconds / 3600), floor(($total_worked_seconds % 3600) / 60)),
-        'net_hours' => $net_display,
-        'net_hours_seconds' => $net_work_seconds,
+        'total_hours' => $net_display, // Now showing total hours including lunch
+        'total_hours_seconds' => $total_worked_seconds, // Total time including lunch
+        'net_hours' => $net_display, // Same as total hours now
+        'net_hours_seconds' => $net_work_seconds, // Same as total seconds now
         'status' => $state,
         'minutes_late' => $minutesLate,
         'long_lunch' => $long_lunch,
         'insufficient_hours' => $insufficient_hours,
         'is_half_day' => $is_half_day,
         'expected_hours' => $expected_work_hours,
-        'entries' => $entries
+        'entries' => $entries,
+        'details' => '' // Initialize details field
     ];
 }
 
