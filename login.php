@@ -1,27 +1,26 @@
-
 <?php
 require_once "includes/config.php";
 
-
+// Start session if not already started
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 if(isset($_SESSION['id'])){
-        header("location: index.php");
+    header("location: index.php");
+    exit;
 }
 
 if (!isset($_SESSION['redirected'])) {
     $_SESSION['redirected'] = true;
-    
     header("location: login.php");
-
-
+    exit;
 }
-
-
 
 // Define allowed coordinates (latitude, longitude)
 $allowedLocations = [   
     // ['lat' =>23.031006, 'lng' => 72.570951],    // Example: New York City
-    ['lat' =>23.0260736, 'lng' => 72.5352448],  // for localhost
+    ['lat' =>23.060516175985743, 'lng' => 72.63348611784362],  // for localhost
     // Add more locations as needed
 ];
 
@@ -32,7 +31,9 @@ $allowedRadius = $fetchredius['setting_value']; // meters
 // Check if user has already passed geolocation verification
 $geolocationVerified = isset($_SESSION['geolocation_verified']) && $_SESSION['geolocation_verified'] === true;
 
-// Handle form submission
+// Initialize error variable
+$errorCode = 0;
+
 // Handle form submission
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $name = $_POST['username'];
@@ -60,30 +61,32 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         // Check if geolocation data was submitted (only required for non-WFH users)
-        if (!$isWFHUser && (isset($_POST['latitude']) && $_POST['latitude'] !== 0 && isset($_POST['longitude']) && $_POST['longitude'] !== 0)) {
-            $userLat = floatval($_POST['latitude']);
-            $userLng = floatval($_POST['longitude']);
-            
-            // Check if user is within allowed radius
-            $isWithinRange = false;
-            foreach ($allowedLocations as $location) {
-                $distance = calculateDistance($userLat, $userLng, $location['lat'], $location['lng']);
-                if ($distance <= $allowedRadius) {
-                    $isWithinRange = true;
-                    break;
+        if (!$isWFHUser) {
+            if (isset($_POST['latitude']) && $_POST['latitude'] != 0 && isset($_POST['longitude']) && $_POST['longitude'] != 0) {
+                $userLat = floatval($_POST['latitude']);
+                $userLng = floatval($_POST['longitude']);
+                
+                // Check if user is within allowed radius
+                $isWithinRange = false;
+                foreach ($allowedLocations as $location) {
+                    $distance = calculateDistance($userLat, $userLng, $location['lat'], $location['lng']);
+                    if ($distance <= $allowedRadius) {
+                        $isWithinRange = true;
+                        break;
+                    }
                 }
-            }
-            
-            if ($isWithinRange) {
-                $_SESSION['geolocation_verified'] = true;
-                $geolocationVerified = true;
+                
+                if ($isWithinRange) {
+                    $_SESSION['geolocation_verified'] = true;
+                    $geolocationVerified = true;
+                } else {
+                    $errorCode = 1; // Location not allowed
+                    $geolocationVerified = false;
+                }
             } else {
-                $d = 1; // Location not allowed
+                $errorCode = 3; // Location not provided (for non-WFH users)
                 $geolocationVerified = false;
             }
-        } elseif (!$isWFHUser) {
-            $d = 3; // Location not provided (for non-WFH users)
-            $geolocationVerified = false;
         } else {
             // WFH users bypass location check
             $geolocationVerified = true;
@@ -91,9 +94,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         // If geolocation is verified or user is WFH, process login
         if ($geolocationVerified || $isWFHUser) {
-            // Rest of your login success logic...
             if($user['status'] == "inactive"){
-                // Inactive user handling
+                $errorCode = 4; // Inactive user
             } else {
                 $_SESSION['id'] = $user['emp_id'];
                 $_SESSION['at_office'] = true; // False for WFH users
@@ -110,7 +112,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
         }
     } else {
-        $d = 2; // Invalid credentials
+        $errorCode = 2; // Invalid credentials
     }
 }
 
@@ -131,12 +133,6 @@ function calculateDistance($lat1, $lon1, $lat2, $lon2) {
     
     return $angle * $earthRadius;
 }
-
-
-
-
-
-
 ?>
 
 <!DOCTYPE html>
@@ -149,7 +145,7 @@ function calculateDistance($lat1, $lon1, $lat2, $lon2) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
    
     <style>
-        /* Your existing CSS styles */
+        /* Your existing CSS styles remain the same */
         :root {
             --primary: #2c3e50;
             --secondary: #3498db;
@@ -490,15 +486,16 @@ function calculateDistance($lat1, $lon1, $lat2, $lon2) {
                 <button id="get-location" class="location-btn">Allow Location Access</button>
             </div>
             <?php endif; ?>
+            
             <form id="login-form" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>" method="POST">
-                <input type="hidden" id="latitude" name="latitude">
-                <input type="hidden" id="longitude" name="longitude">
+                <input type="hidden" id="latitude" name="latitude" value="0">
+                <input type="hidden" id="longitude" name="longitude" value="0">
                 
                 <div class="input-group">
                     <label for="username">Username</label>
                     <div class="input-with-icon">
                         <i class="fas fa-user"></i>
-                        <input type="text" id="username" name="username" class="input-field" placeholder="Enter your username" required>
+                        <input type="text" id="username" name="username" class="input-field" placeholder="Enter your username" required value="<?php echo isset($_POST['username']) ? htmlspecialchars($_POST['username']) : ''; ?>">
                     </div>
                 </div>
                 
@@ -506,15 +503,13 @@ function calculateDistance($lat1, $lon1, $lat2, $lon2) {
                     <label for="password">Password</label>
                     <div class="input-with-icon">
                         <i class="fas fa-lock"></i>
-                        <input type="password" id="password" name="password" class="input-field" placeholder="Enter your password" required showpassword>
-                        <!-- <span id="togglePassword" style="cursor:pointer;">👁️</span> -->
+                        <input type="password" id="password" name="password" class="input-field" placeholder="Enter your password" required>
                         <i class="fas fa-eye-slash" style="position:relative; float:right;transform: translate( -150%,-190%); cursor: pointer;" id="togglePassword"></i>
                     </div>
                 </div>
                 
                 <button type="submit" class="login-button" id="submit-button">Sign In</button>
-                <!-- <span>For Work From Home <span id="work_from_home" style="color:blue; cursor:pointer;">Click Here</span>!</span><br> -->
-                <span>Not In Office? go to <a href="checkin.php">General Access Login</a>!</span>
+                <span>Not In Office? go to <a href="checkin.php">General Access Login</a>!</span><br>
                 <span>Forget Password? <a href="forgot_pass.php">Click Here</a>!</span>
             </form>
         </div>
@@ -524,26 +519,42 @@ function calculateDistance($lat1, $lon1, $lat2, $lon2) {
     <script src="js/sweetAlert.js"></script>
     
     <script>
+        // Store error code in JavaScript variable
+        const errorCode = <?php echo $errorCode; ?>;
         
-     
-       
+        // Show appropriate error message based on error code
+        document.addEventListener('DOMContentLoaded', function() {
+            switch(errorCode) {
+                case 1:
+                    showLocationError("You are not in an allowed location to access this system.");
+                    break;
+                case 2:
+                    showCredentialsError("Invalid username or password.");
+                    break;
+                case 3:
+                    showLocationError("Location access is required to login. Please allow location access.");
+                    document.getElementById('location-message').style.display = 'block';
+                    break;
+                case 4:
+                    showCredentialsError("Your account is inactive. Please contact administrator.");
+                    break;
+            }
+        });
         
-            // // prevent all kind of functions by user.
-        
+        // prevent all kind of functions by user.
         document.addEventListener('contextmenu', e => e.preventDefault());
         document.onkeydown = function (e) {
-        // F12
-        if (e.keyCode === 123) return false;
-        // Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C
-        if (e.ctrlKey && e.shiftKey && ['I', 'J', 'C'].includes(e.key.toUpperCase())) return false;
-        // Ctrl+U (View Source)
-        if (e.ctrlKey && e.key.toUpperCase() === 'U') return false;
+            // F12
+            if (e.keyCode === 123) return false;
+            // Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C
+            if (e.ctrlKey && e.shiftKey && ['I', 'J', 'C'].includes(e.key.toUpperCase())) return false;
+            // Ctrl+U (View Source)
+            if (e.ctrlKey && e.key.toUpperCase() === 'U') return false;
         };
 
         document.addEventListener('selectstart', e => e.preventDefault());
         document.addEventListener('dragstart', e => e.preventDefault());
         document.addEventListener('copy', e => e.preventDefault());
-    
     
         // Toggle password visibility
         $("#togglePassword").click(function(){
@@ -552,59 +563,58 @@ function calculateDistance($lat1, $lon1, $lat2, $lon2) {
             passwordField.attr("type", type);
             this.classList.toggle('fa-eye');
         });
-
-        
-    
     
         // Check if geolocation is supported
         if (!navigator.geolocation) {
             showLocationError("Geolocation is not supported by your browser");
         }
         
-        // Function to check if user might be WFH (based on username input)
-function checkWFHPotential() {
-    const username = document.getElementById('username').value;
-    
-    // If username is entered, you could make an AJAX call to check WFH status
-    // For now, we'll just show location requirement by default
-    if (username.length > 0) {
-        // You can add AJAX call here to pre-check WFH status
-        document.getElementById('location-message').style.display = 'block';
-    }
-}
-
-
-//  for the first time geolocation search
-    initialGeolocationCheck();
-    
-        
-    function initialGeolocationCheck() {
-        Swal.fire({
-            title: "Please Provide Location Access",
-            text: "Location access is required to login.",
-            icon: "info",
-            confirmButtonText: "OK"
-
-        }).then((res) => {
-
-           
-            // Trigger location request after user acknowledges
-            requestLocation();
-            
+        // Initial geolocation check
+        document.addEventListener('DOMContentLoaded', function() {
+            if (errorCode === 0) {
+                initialGeolocationCheck();
+            }
         });
-    }
+        
+        function initialGeolocationCheck() {
+            // Only show location request if no errors and not WFH user
+            if (errorCode === 0 && !<?php echo isset($_SESSION['WFHsuccess']) && $_SESSION['WFHsuccess'] ? 'true' : 'false'; ?>) {
+                Swal.fire({
+                    title: "Please Provide Location Access",
+                    text: "Location access is required to login.",
+                    icon: "info",
+                    confirmButtonText: "OK"
+                }).then((res) => {
+                    if (res.isConfirmed) {
+                        requestLocation();
+                    }
+                });
+            }
+        }
 
-// Add event listener to username field
-document.getElementById('username').addEventListener('blur', checkWFHPotential);
+        // Add event listener to username field
+        document.getElementById('username').addEventListener('blur', function() {
+            const username = this.value;
+            if (username.length > 0 && !<?php echo isset($_SESSION['WFHsuccess']) && $_SESSION['WFHsuccess'] ? 'true' : 'false'; ?>) {
+                document.getElementById('location-message').style.display = 'block';
+            }
+        });
+
         // Show location permission request
         document.getElementById('get-location').addEventListener('click', requestLocation);
-        // document.getElementById('login-form').addEventListener('submit', function(e) {
-        //     // If location hasn't been verified yet, prevent form submission
-        //     if (!document.getElementById('latitude').value || !document.getElementById('longitude').value) {
-        //         e.preventDefault();
-        //         document.getElementById('location-message').style.display = 'block';
-        //     }
-        // });
+        
+        // Form submission validation
+        document.getElementById('login-form').addEventListener('submit', function(e) {
+            const lat = document.getElementById('latitude').value;
+            const lng = document.getElementById('longitude').value;
+            
+            // If location hasn't been verified yet and not WFH user, prevent form submission
+            if ((!lat || !lng || lat == 0 || lng == 0) && !<?php echo isset($_SESSION['WFHsuccess']) && $_SESSION['WFHsuccess'] ? 'true' : 'false'; ?>) {
+                e.preventDefault();
+                showLocationError("Please allow location access before submitting the form.");
+                document.getElementById('location-message').style.display = 'block';
+            }
+        });
         
         function requestLocation() {
             document.getElementById('get-location').textContent = 'Detecting location...';
@@ -623,7 +633,7 @@ document.getElementById('username').addEventListener('blur', checkWFHPotential);
                       animation: spin 1s linear infinite;
                       margin-bottom: 10px;
                     "></div>
-                    <div style="font-size: 16px;">Please wait while we complete detect your location.</div>
+                    <div style="font-size: 16px;">Please wait while we detect your location.</div>
                   </div>
                 `,
                 allowOutsideClick: false,
@@ -634,9 +644,6 @@ document.getElementById('username').addEventListener('blur', checkWFHPotential);
                 didOpen: () => {
                   Swal.showLoading();
                 }
-            }).then(() =>{
-                document.getElementById('get-location').textContent = 'Allow Location Access';
-                document.getElementById('get-location').disabled = false;
             });
             
             navigator.geolocation.getCurrentPosition(
@@ -644,12 +651,12 @@ document.getElementById('username').addEventListener('blur', checkWFHPotential);
                     // Success: got location
                     const lat = position.coords.latitude;
                     const lng = position.coords.longitude; 
-                    
-                    
+
+
                     ///////////////////////////////////////////////
 
 
-                    alert("lat: "+lat+" lng: "+lng);
+                    // alert("lat: "+lat+" lng: "+lng);
 
 
                     ///////////////////////////////////////////////
@@ -661,8 +668,15 @@ document.getElementById('username').addEventListener('blur', checkWFHPotential);
                     // Hide location message
                     document.getElementById('location-message').style.display = 'none';
                     
+                    // Close loading SweetAlert
+                    Swal.close();
+                    
                     // Show success message
                     showLocationSuccess("Location verified! You can now login.");
+                    
+                    // Re-enable location button
+                    document.getElementById('get-location').textContent = 'Allow Location Access';
+                    document.getElementById('get-location').disabled = false;
                 },
                 function(error) {
                     // Error: failed to get location
@@ -685,6 +699,7 @@ document.getElementById('username').addEventListener('blur', checkWFHPotential);
                             break;
                     }
                     
+                    Swal.close();
                     showLocationError(errorMessage);
                 },
                 {
@@ -704,6 +719,15 @@ document.getElementById('username').addEventListener('blur', checkWFHPotential);
             });
         }
         
+        function showCredentialsError(message) {
+            Swal.fire({
+                title: 'Login Error',
+                text: message,
+                icon: 'error',
+                confirmButtonText: 'OK'
+            });
+        }
+        
         function showLocationSuccess(message) {
             Swal.fire({
                 title: 'Success',
@@ -712,46 +736,6 @@ document.getElementById('username').addEventListener('blur', checkWFHPotential);
                 confirmButtonText: 'OK'
             });
         }
-        
-        // Handle PHP response
-        let d = <?php echo isset($d) ? $d : 0; ?>;
-        // alert(typeof(d))
-        if (d == 1) {
-            Swal.fire({
-                title: "Access Denied!",
-                text: "You are not in an allowed location to access this system.",
-                icon: "error"
-            }).then(() => {
-                // Clear location data
-                document.getElementById('latitude').value = '';
-                document.getElementById('longitude').value = '';
-                document.getElementById('location-message').style.display = 'block';
-                // window.location.href="login.php";
-            });
-        }
-        if (d == 2) {
-            Swal.fire({
-                title: "Invalid Credentials!",
-                icon: "error",
-                showConfirmButton: true
-            }).then(res => {
-                if (res.isConfirmed) {
-                    // window.location.href = "login.php";
-                }
-            });
-        }
-        if (d == 3) {
-            Swal.fire({
-                title: "Location Not Provided!",
-                icon: "error",
-                showConfirmButton: true
-            }).then(res => {
-                if (res.isConfirmed) {
-                    $("#location-message").show();
-                }
-            });
-        }
-
         
         // Add focus effects to inputs
         const inputs = document.querySelectorAll('.input-field');
