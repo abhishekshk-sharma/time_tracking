@@ -1,6 +1,13 @@
 <?php
     require_once "includes/config.php";
 
+    require 'vendor/autoload.php';
+
+    use StzkDm\JwtAuth\TokenManager;
+
+    
+
+
     $userID = isset($_SESSION['id'])?$_SESSION['id']:null;
     if($userID == null){
         header("location: login.php");

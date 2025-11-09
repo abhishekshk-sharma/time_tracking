@@ -1,0 +1,20 @@
+{
+    "name": "stzk-dm/jwt-auth",
+    "description": "this is for the using jwt based authentication for my project",
+    "type": "project",
+    "require": {
+        "firebase/php-jwt": "6.0"
+    },
+    "license": "proprietary",
+    "autoload": {
+        "psr-4": {
+            "StzkDm\\JwtAuth\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "y"
+        }
+    ],
+    "minimum-stability": "stable"
+}
