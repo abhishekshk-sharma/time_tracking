@@ -5,7 +5,7 @@
 
     use StzkDm\JwtAuth\TokenManager;
 
-    
+    // echo TokenManager::greet();
 
 
     $userID = isset($_SESSION['id'])?$_SESSION['id']:null;

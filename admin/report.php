@@ -794,6 +794,7 @@
     $(document).ready(function(){
 
 
+        checksession();
 
 
                    // For notification Section
@@ -1330,44 +1331,44 @@
 
     $("#rejectBtn").click(function(){
 
-  Swal.fire({
-    title: 'Are you Sure to Reject!',
-    icon: "info",
-    focusConfirm: false,
-    showCancelButton: true,
-    confirmButtonText: 'Next',
-    cancelButtonText: 'Cancel',
+        Swal.fire({
+            title: 'Are you Sure to Reject!',
+            icon: "info",
+            focusConfirm: false,
+            showCancelButton: true,
+            confirmButtonText: 'Next',
+            cancelButtonText: 'Cancel',
+        
+            }).then((result) => {
+            if (result.isConfirmed) {
+            
+
+            Swal.fire({
+                title: 'Confirm Submission',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Submit',
+                cancelButtonText: 'Edit',
+                reverseButtons: true
+            }).then((finalResult) => {
+                if (finalResult.isConfirmed) {
+                // Final submission logic here
+                Swal.fire({
+                    title: 'Notification Saved',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+                doReject();
+                // Example: send to backend
+                // submitNotification(title, desc);
+                }
+            });
+            }
+        });
    
-    }).then((result) => {
-    if (result.isConfirmed) {
-      
-
-      Swal.fire({
-        title: 'Confirm Submission',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Submit',
-        cancelButtonText: 'Edit',
-        reverseButtons: true
-      }).then((finalResult) => {
-        if (finalResult.isConfirmed) {
-          // Final submission logic here
-          Swal.fire({
-            title: 'Notification Saved',
-            icon: 'success',
-            timer: 2000,
-            showConfirmButton: false
-          });
-          doReject();
-          // Example: send to backend
-          // submitNotification(title, desc);
-        }
-      });
-    }
-  });
-
-
-
+            
+    });
 
     function doReject(){
         let user_id = $("#user_id").val();
@@ -1395,100 +1396,100 @@
             }
         });
     }
-            
-    });
 
     $("#approveBtn").click(function(){
 
 
 
-    Swal.fire({
-    title: 'Are You Sure!',
-    icon: "info",
-    focusConfirm: false,
-    showCancelButton: true,
-    confirmButtonText: 'Next',
-    cancelButtonText: 'Cancel',
-    
-    }).then((result) => {
-    if (result.isConfirmed) {
-      
-      Swal.fire({
-        title: 'Confirm Submission',
-        icon: 'warning',
+        Swal.fire({
+        title: 'Are You Sure!',
+        icon: "info",
+        focusConfirm: false,
         showCancelButton: true,
-        confirmButtonText: 'Submit',
-        cancelButtonText: 'Edit',
-        reverseButtons: true
-      }).then((finalResult) => {
-        if (finalResult.isConfirmed) {
-          // Final submission logic here
-          
-            checksession();
-      
-            let requestedtype = $("#detail-type").val();
-
-            if(requestedtype.trim() == "punch_Out_regularization"){ 
-                let req_time = $("#punchouttimestore").val()
+        confirmButtonText: 'Next',
+        cancelButtonText: 'Cancel',
+        
+        }).then((result) => {
+            if (result.isConfirmed) {
+            
                 Swal.fire({
-                    title:"Please Set The Requested Punch Out Time in Employee Attendance",
-                    html:"<input type='time' id='punchouttime' class='swal2-input' placeholder='Requested Punch Out Time' value='"+req_time+"'>",
-                    confirmButtonText: 'Submit',
+                    title: 'Confirm Submission',
+                    icon: 'warning',
                     showCancelButton: true,
-                    preConfirm: () => {
-                        const punchouttime = Swal.getPopup().querySelector('#punchouttime').value;
-                        if (!punchouttime) {
-                            Swal.showValidationMessage(`Please enter the requested punch out time`);
-                        }
-                        return { punchouttime: punchouttime }
-                    }
-                }).then((timeResult) => {
-                    if (timeResult.isConfirmed) {
-                        const punchouttime = timeResult.value.punchouttime;
-                        if (punchouttime) {
-                            $("#punchouttime").val(punchouttime);
-                            doapprove_punchouttime(punchouttime);
+                    confirmButtonText: 'Submit',
+                    cancelButtonText: 'Edit',
+                    reverseButtons: true
+                }).then((finalResult) => {
+                    if (finalResult.isConfirmed) {
+                        // Final submission logic here
+                    
+                        checksession();
+                
+                        let requestedtype = $("#detail-type").val();
+
+                        if(requestedtype.trim() == "punch_Out_regularization"){ 
+                            let req_time = $("#punchouttimestore").val()
                             Swal.fire({
-                                title: 'Notification Saved',
-                                icon: 'success',
-                                timer: 2000,
-                                showConfirmButton: false
+                                title:"Please Set The Requested Punch Out Time in Employee Attendance",
+                                html:"<input type='time' id='punchouttime' class='swal2-input' placeholder='Requested Punch Out Time' value='"+req_time+"'>",
+                                confirmButtonText: 'Submit',
+                                showCancelButton: true,
+                                preConfirm: () => {
+                                    const punchouttime = Swal.getPopup().querySelector('#punchouttime').value;
+                                    if (!punchouttime) {
+                                        Swal.showValidationMessage(`Please enter the requested punch out time`);
+                                    }
+                                    return { punchouttime: punchouttime }
+                                }
+                            }).then((timeResult) => {
+                                if (timeResult.isConfirmed) {
+                                    const punchouttime = timeResult.value.punchouttime;
+                                    if (punchouttime) {
+                                        $("#punchouttime").val(punchouttime);
+                                        doapprove_punchouttime(punchouttime);
+                                        Swal.fire({
+                                            title: 'Notification Saved',
+                                            icon: 'success',
+                                            timer: 2000,
+                                            showConfirmButton: false
+                                        });
+                                    } else {
+                                        Swal.fire({
+                                            title: 'Action Not Completed inside',
+                                            text: 'You must set the requested punch out time to approve this request.',
+                                            icon: 'error',
+                                            timer: 6000,
+                                            showConfirmButton: false
+                                        });
+                                    }
+                                } else {
+                                    Swal.fire({
+                                        title: 'Action Not Completed outside',
+                                        text: 'You must set the requested punch out time to approve this request .',
+                                        icon: 'error',
+                                        timer: 6000,
+                                        showConfirmButton: false
+                                    });
+                                }
                             });
-                        } else {
-                            Swal.fire({
-                                title: 'Action Not Completed',
-                                text: 'You must set the requested punch out time to approve this request.',
-                                icon: 'error',
-                                timer: 3000,
-                                showConfirmButton: false
-                            });
+
+                        } 
+                        else if(requestedtype.trim() == "work_from_home"){ 
+                            // let req_time = $("#punchouttimestore").val()
+                            doapprove_wfh();
+                        } 
+                        else{
+                            doapprove();
                         }
-                    } else {
-                        Swal.fire({
-                            title: 'Action Not Completed',
-                            text: 'You must set the requested punch out time to approve this request.',
-                            icon: 'error',
-                            timer: 3000,
-                            showConfirmButton: false
-                        });
+                    
+                        // Example: send to backend
+                        // submitNotification(title, desc);
                     }
                 });
-
-            } 
-            if(requestedtype.trim() == "work_from_home"){ 
-                // let req_time = $("#punchouttimestore").val()
-                doapprove_wfh();
-            } 
-            else{
-                doapprove();
             }
-          
-          // Example: send to backend
-          // submitNotification(title, desc);
-        }
-      });
-    }
-  });
+
+        });
+    });
 
 
 
@@ -1708,10 +1709,7 @@
             });
         }
 
-        // This is all about refreshing the page and see if the session is not older than 5 minutes
-        $(document).ready(function() {
-            checksession();
-        });
+
 
         // Run on any click or touch
         $(document).on("click touchstart", function() {
@@ -1726,5 +1724,5 @@
             }
         });
 
-    });
+    
 </script>

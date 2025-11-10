@@ -846,6 +846,7 @@
                 <div class="form-group">
                     <label for="empEmail">New Password</label>
                     <input type="password" id="newpass" value="" placeholder='Enter New Password'  required >
+                    <i class="fas fa-eye-slash" style="position:relative; float:right;transform: translate( -150%,-190%); cursor: pointer;" id="togglePassword"></i>
                 </div>
                 <div class="modal-footer">
                         <!-- <button class="cancelpass-btn">Cancel</button> -->
@@ -905,6 +906,13 @@
         $(document).ready(function(){
 
 
+            // Toggle password visibility
+        $("#togglePassword").click(function(){
+            let passwordField = $("#newpass");
+            let type = passwordField.attr("type") === "password" ? "text" : "password";
+            passwordField.attr("type", type);
+            this.classList.toggle('fa-eye');
+        });
 
                     // For notification Section
 
