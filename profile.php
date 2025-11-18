@@ -5,7 +5,7 @@
 
     use StzkDm\JwtAuth\TokenManager;
 
-    // echo TokenManager::greet();
+    echo TokenManager::greet();
 
 
     $userID = isset($_SESSION['id'])?$_SESSION['id']:null;
@@ -102,7 +102,7 @@
                     </div>
                     <div class="detail-card editable" onclick="openDobModal()">
                         <h3><i class="fas fa-birthday-cake"></i> Date of Birth</h3>
-                        <p id="dobDisplay"><?php echo (isset($details['dob'])?$details['dob']:"")?></p>
+                        <p id="dobDisplay"><?php echo (isset($details['dob'])?(new DateTime($details['dob'], new DateTimeZone("Asia/Kolkata")))->format('M d, Y'):"")?></p>
                         <span class="edit-icon"><i class="fas fa-edit"></i></span>
                     </div>
                     <div class="detail-card">
